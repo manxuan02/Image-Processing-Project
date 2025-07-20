@@ -1,0 +1,968 @@
+
+ -------------------- blueChannel.js ------------------------ 
+
+function blueChannelFilter(img)
+{
+    // To create a New_Image to store the Pixel_Values, & return it 
+    var imgOut = createImage(img.width, img.height);
+
+    // To Access the Pixels
+    imgOut.loadPixels(); // access pixels from the New_Image
+    img.loadPixels(); // access pixels from the 'screen shot'
+
+    // To Load over all the Pixels
+    for (x = 0; x < imgOut.width; x++)
+    {
+        for (y = 0; y < imgOut.height; y++)
+        {
+            // To access the correct Pixels (r, g, b, a)
+            var index = (x + y * imgOut.width) * 4;
+
+            var r = img.pixels[index + 0];
+            var g = img.pixels[index + 1];
+            var b = img.pixels[index + 2];
+
+            var gray = (r + g + b) / 3; // simple
+
+            imgOut.pixels[index + 0] = 0; // For the R channel
+            imgOut.pixels[index + 1] = 0; // For the G channel
+            imgOut.pixels[index + 2] = gray; // For the B channel
+            imgOut.pixels[index + 3] = 255; // For the A channel
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+ -------------------- blur.js ------------------------ 
+
+// The Blur Filter
+function blur(img)
+{
+    var matrix = generateMatrix(20);
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    img.loadPixels();
+    
+    // To read every pixel
+    for (i = 0; i < img.pixels.length; i+=4)
+    {
+        // To pass the Position of the Pixel(wanted to be examined)
+        var c = convolution(x, y, matrix, img);
+
+        imgOut.pixels[i + 0] = c[0]; // For R channel
+        imgOut.pixels[i + 1] = c[1]; // For G channel
+        imgOut.pixels[i + 2] = c[2]; // For B channel
+        imgOut.pixels[i + 3] = 255; // For A channel
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+// To generate matrix >> to allow to multiply the pixels
+function generateMatrix(size)
+{
+    var m = [];
+    for(i = 0; i < size; i++)
+    {
+        var n = [];
+        for(j = 0; j < size; j++)
+        {
+            n.push(1.5 / (size * size));
+        }
+        m.push(n);
+    }
+    return m;
+}
+
+// To do convolution
+function convolution(x, y, matrix, img)
+{
+    var matrixSize = matrix.length;
+    var totalRed = 0.0;
+    var totalGreen = 0.0;
+    var totalBlue = 0.0;
+    var offset = floor(matrixSize / 2); //offset = 1
+
+    // convolution matrix loop
+    for (var i = 0; i < matrixSize; i++) // To loop tru ROW
+    {
+        for (var j = 0; j < matrixSize; j++) // To loop tru COLUMN
+        {
+            // Get pixel loc within convolution matrix
+            var xloc = x + i - offset;
+            var yloc = y + j - offset;
+            var index = (xloc + img.width * yloc) * 4;
+            
+            // ensure we don't address a pixel that doesn't exist
+            index = constrain(index, 0, img.pixels.length - 1);
+
+            // multiply all values with the mask and sum up
+            totalRed += img.pixels[index + 0] * matrix[i][j];
+            totalGreen += img.pixels[index + 1] * matrix[i][j];
+            totalBlue += img.pixels[index + 2] * matrix[i][j];
+        }
+    }
+
+    // Return the New Color
+    return [totalRed, totalGreen, totalBlue];
+}
+
+ -------------------- colourSpace1.js ------------------------ 
+
+function colourSpace1Filter(img)
+{
+    img.loadPixels();
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+
+    for (i = 0; i < img.pixels.length; i += 4)
+    {
+        var r = img.pixels[i];
+        var g = img.pixels[i + 1];
+        var b = img.pixels[i + 2];
+
+        // YCbCr
+        Y = r * 0.299 + g * 0.587 + b * 0.114;
+        Cb = (r * -0.169 - g * 0.331 + b * 0.5) + 128;
+        Cr = (r * 0.5 - g * 0.41 - b * 0.081) + 128;
+
+        imgOut.pixels[i + 0] = Y; // For the R channel
+        imgOut.pixels[i + 1] = Cb; // For the G channel
+        imgOut.pixels[i + 2] = Cr; // For the B channel
+        imgOut.pixels[i + 3] = 255; // For the A channel
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+ -------------------- colourSpace2.js ------------------------ 
+
+function colourSpace2Filter(img)
+{
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    img.loadPixels();
+
+    for (x = 0; x < imgOut.width; x++)
+    {
+        for (y = 0; y < imgOut.height; y++)
+        {
+            var index = (x + y * imgOut.width) * 4;
+
+            // To normalise to 0-1
+            var g = img.pixels[index + 1] / 255;
+            var r = img.pixels[index + 0] / 255;
+            var b = img.pixels[index + 2] / 255;
+
+            // To compute: min, max, delta
+            var max = Math.max(r, g, b);
+            var min = Math.min(r, g, b);
+            var delta = max - min; //is the DIFF between the highest & lowest colour values in a pixel
+
+            // To calculate Hue
+            H = 0;
+            if(delta !== 0)
+            {
+                if(max === r)
+                {
+                    H = ((g - b) / delta) % 6;
+                }
+                else if(max === g)
+                {
+                    H = ((b - r) / delta) + 2;
+                }
+                else
+                {
+                    H = ((r - g) / delta) + 4;
+                }
+
+                // To convert to degrees >> because "hue" is measured in degrees in colour wheel
+                H *= 60
+                if(H < 0) H += 360;
+            }
+
+            // To scale Hue to [0, 255] >> measures the "type" of colour
+            // convert degrees(0o - 360o) to pixel_values(0 - 255) >> because "hue" is measured in degrees in colour wheel
+            H = (H / 360) * 255;
+
+            // To compute Saturation >> measures how "pure" the colour is
+            // 0: no colour,,, 255: fully saturated, vivid colour
+            if(max === 0)
+            {
+                // If max=0 >> saturation is 0(BLACK)
+                S = 0;
+            }
+            else
+            {
+                // Normalised saturation calculation
+                S = (delta / max) * 255;
+            }
+
+            // To compute Value >> measures how "bright" the colour is
+            V = max * 255;
+
+            // To ensure a valid pixel range (0-255)
+            H = constrain(H, 0, 255);
+            S = constrain(S, 0, 255);
+            V = constrain(V, 0, 255);
+
+            imgOut.pixels[index + 0] = H; // For the R channel
+            imgOut.pixels[index + 1] = S; // For the G channel
+            imgOut.pixels[index + 2] = V; // For the B channel
+            imgOut.pixels[index + 3] = 255; // For the A channel
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+ -------------------- extension.js ------------------------ 
+
+function extension(img, x, y)
+{
+    img.loadPixels();
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    
+    // push();
+    laserRay(x, y, img.width, img.height);
+    // pop();
+
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+function laserRay(gridX, gridY, gridWidth, gridHeight)
+{
+    if(faceTypes.length > 0)
+    {
+        var rightEye = faceTypes[0].keypoints[386];
+        var leftEye = faceTypes[0].keypoints[159];
+        var nose = faceTypes[0].keypoints[6];
+
+        // To calculate head center
+        var headCenter = createVector((leftEye.x + rightEye.x) / 2, (leftEye.y + rightEye.y) / 2);
+
+        // To determine head orientation
+        var headOrientation = createVector(nose.x - headCenter.x, nose.y - headCenter.y);
+        headOrientation.normalize();
+
+        var laserDirection = createVector(headOrientation.x, headOrientation.y);
+        var laserLength = Math.min(gridWidth / 2, gridHeight / 2);
+
+        var leftLaserEnd = createVector(
+            constrain(leftEye.x + laserDirection.x * laserLength, 0, gridWidth),
+            constrain(leftEye.y + laserDirection.y * laserLength, 0, gridHeight)
+        );
+        var rightLaserEnd = createVector(
+            constrain(rightEye.x + laserDirection.x * laserLength, 0, gridWidth),
+            constrain(rightEye.y + laserDirection.y * laserLength, 0, gridHeight)
+        );
+
+        fill(255,0,0, 125);
+        beginShape();
+        // Left eye
+        vertex(leftEye.x, leftEye.y + 600); //top left
+        vertex(leftLaserEnd.x, leftLaserEnd.y + 600); //end left
+        vertex(leftLaserEnd.x - 60, leftLaserEnd.y + 600); //end right
+        vertex(leftEye.x, leftEye.y + 600); //end right
+        // Right eye
+        vertex(rightEye.x, rightEye.y + 600); //top left
+        vertex(rightLaserEnd.x, rightLaserEnd.y + 600); //end left
+        vertex(rightLaserEnd.x - 60, rightLaserEnd.y + 600); //end right
+        vertex(rightEye.x, rightEye.y + 600); //end right
+        endShape();
+    }
+}
+ -------------------- faceDetection.js ------------------------ 
+
+function faceDetectionFilter(video, detector)
+{
+    var faces = detector.detect(video.canvas);
+    for(i = 0; i < faces.length; i++)
+    {
+        var face = faces[i];
+        if(face[4] > 4)
+        {
+            push();
+            strokeWeight(2);
+            stroke(0, 255, 0);
+            noFill();
+            rect(face[0] + 320, face[1], face[2], face[3]);
+            pop();
+        }
+    }
+}
+
+function greyscaleFaceDetectionFilter(video, detector)
+{
+    var faces = detector.detect(video.canvas);
+    for(i = 0; i < faces.length; i++)
+    {
+        var face = faces[i];
+        if(face[4] > 4)
+        {
+            var x = face[0];
+            var y = face[1];
+            var w = face[2];
+            var h = face[3];
+
+            var fd = video.get(x, y, w, h);
+            var fdGreyscale = greyscaleNBrightnessFilter(fd);
+
+            push();
+            image(fdGreyscale, x, y + 480, w, h);
+            pop();
+        }
+    }
+}
+
+function blurFaceDetectionFilter(video, detector)
+{
+    var faces = detector.detect(video.canvas);
+    for(i = 0; i < faces.length; i++)
+    {
+        var face = faces[i];
+        if(face[4] > 4)
+        {
+            var x = face[0];
+            var y = face[1];
+            var w = face[2];
+            var h = face[3];
+
+            var fd = video.get(x, y, w, h);
+            var fdblur = blur(fd);
+
+            push();
+            image(fdblur, x, y + 480, w, h);
+            pop();
+        }
+    }
+}
+
+function colourConvertFaceDetectionFilter(video, detector)
+{
+    var faces = detector.detect(video.canvas);
+    for(i = 0; i < faces.length; i++)
+    {
+        var face = faces[i];
+        if(face[4] > 4)
+        {
+            var x = face[0];
+            var y = face[1];
+            var w = face[2];
+            var h = face[3];
+
+            var fd = video.get(x, y, w, h);
+            var colourConvert = colourSpace1Filter(fd);
+
+            push();
+            image(colourConvert, x, y + 480, w, h);
+            pop();
+        }
+    }
+}
+
+function pixelateFaceDetectionFilter(video, detector)
+{
+    var faces = detector.detect(video.canvas);
+    for(i = 0; i < faces.length; i++)
+    {
+        var face = faces[i];
+        if(face[4] > 4)
+        {
+            var x = face[0];
+            var y = face[1];
+            var w = face[2];
+            var h = face[3];
+
+            var fd = video.get(x, y, w, h);
+            var pixelate = pixelated(fd);
+
+            push();
+            image(pixelate, x, y + 480, w, h);
+            pop();
+        }
+    }
+}
+ -------------------- greenChannel.js ------------------------ 
+
+function greenChannelFilter(img)
+{
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    img.loadPixels();
+
+    for (x = 0; x < imgOut.width; x++)
+    {
+        for (y = 0; y < imgOut.height; y++)
+        {
+            // To access the correct Pixels (r, g, b, a)
+            var index = (x + y * imgOut.width) * 4;
+
+            var r = img.pixels[index + 0];
+            var g = img.pixels[index + 1];
+            var b = img.pixels[index + 2];
+
+            var gray = (r + g + b) / 3; // simple
+
+            imgOut.pixels[index + 0] = 0; // For the R channel
+            imgOut.pixels[index + 1] = gray; // For the G channel
+            imgOut.pixels[index + 2] = 0; // For the B channel
+            imgOut.pixels[index + 3] = 255; // For the A channel
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+ -------------------- greyscaleNBrightness.js ------------------------ 
+
+function greyscaleNBrightnessFilter(img)
+{
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    img.loadPixels();
+    
+    for(i = 0; i < img.pixels.length; i += 4)
+    {
+        var r = img.pixels[i];
+        var g = img.pixels[i + 1];
+        var b = img.pixels[i + 2];
+
+        // Convert to grayscale
+        var gray = (r + g + b) / 3;
+
+        // To increase brightness by 20%
+        var brighten = min(gray * 1.2, 255);  // To ensure max is 255
+
+        imgOut.pixels[i] = brighten;
+        imgOut.pixels[i + 1] = brighten;
+        imgOut.pixels[i + 2] = brighten;
+        imgOut.pixels[i + 3] = 255;
+    }
+
+    imgOut.updatePixels();
+    return imgOut;
+}
+ -------------------- pixelated.js ------------------------ 
+
+// The Pixelated Filter
+function pixelated(img)
+{
+    var pixelSize = 5;
+    img.loadPixels();
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+
+    // To calculate the sum of RGB values of pixels in the block
+    for(i = 0; i < img.pixels.length; i += 4 * pixelSize)
+    {
+        var rSum = 0;
+        var gSum = 0;
+        var bSum = 0;
+        var count = 0;
+
+        for(j = 0; j < pixelSize; j += 4)
+        {
+            if(i + j < img.pixels.length)
+            {
+                rSum += img.pixels[i + j + 0];
+                gSum += img.pixels[i + j + 1];
+                bSum += img.pixels[i + j + 2];
+                count++;
+            }
+        }
+        
+        // To calculate the average RGB values of the block
+        var rAverage = rSum / count;
+        var gAverage = gSum / count;
+        var bAverage = bSum / count;
+
+        // Paint the block with the average RGB values
+        for(j = 0; j < pixelSize * 4; j += 4)
+        {
+            if(i + j < img.pixels.length)
+            {
+                imgOut.pixels[i + j + 0] = rAverage; // Red 
+                imgOut.pixels[i + j + 1] = gAverage; // Green
+                imgOut.pixels[i + j + 2] = bAverage; // Blue
+                imgOut.pixels[i + j + 3] = 255;
+            }
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+ -------------------- redChannel.js ------------------------ 
+
+function redChannelFilter(img)
+{
+    var imgOut = createImage(img.width, img.height);
+    imgOut.loadPixels();
+    img.loadPixels();
+
+    for (x = 0; x < imgOut.width; x++)
+    {
+        for (y = 0; y < imgOut.height; y++)
+        {
+            var index = (x + y * imgOut.width) * 4;
+
+            var r = img.pixels[index + 0];
+            var g = img.pixels[index + 1];
+            var b = img.pixels[index + 2];
+
+            var gray = (r + g + b) / 3;
+
+            imgOut.pixels[index + 0] = gray; // For the R channel
+            imgOut.pixels[index + 1] = 0; // For the G channel
+            imgOut.pixels[index + 2] = 0; // For the B channel
+            imgOut.pixels[index + 3] = 255; // For the A channel
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
+
+ -------------------- sketch.js ------------------------ 
+
+var canvas;
+var video; // For webcam LIVE
+
+var webcamImg; // Webcam IMAGE
+var webcamImgTaken = false;
+
+// Empty array for filters
+var filters = [];
+
+// Array to Store filters Label
+var filterLabel = ["Webcam Image", "Grayscale and 20% brightness", "",
+			   "Red channel", "Green channel", "Blue channel",
+			   "Red Threshold image", "Green Threshold image", "Blue Threshold image",
+			   "Webcam image (repeat)", "Colour space 1 (YCbCr)", "Colour space 2 (HSV)",
+			   "Face detection", "Colour space 1 (YCbCr) Threshold image", "Colour space 2 (HSV)Threshold image",
+			   "Extension"];
+
+// Threshold Slider
+var imgIn;
+var redChannelThresholdSlider;
+var greenChannelThresholdSlider;
+var blueChannelThresholdSlider;
+var colourSpace1ThresholdSlider;
+var colourSpace2ThresholdSlider;
+
+// Colour Space (YCbCr)
+var Y;
+var Cr;
+var Cb;
+// Colour Space (HSV)
+var H = 0;
+var S;
+var V;
+
+// Face detection
+var detector;
+var faces;
+var scaleFactor = 1.2;
+var classifier = objectdetect.frontalface;
+var fdStyle = null;
+
+// Extension
+var faceOptions = {maxFaces: 1, 
+			   refineLandmarks: false, 
+			   flipHorizontal: false};
+var facemesh;
+var handpose;
+var faceTypes = [];
+var handTypes = [];
+var modelsLoaded = 0;
+var gridPos = [];
+
+// For extension >> to Load both faceMesh & handPose
+function preload()
+{
+	facemesh = ml5.faceMesh(faceOptions, modelReady);
+	handpose = ml5.handPose(modelReady);
+}
+
+// For extension >> to ensure that both faceMesh & handPose are Loaded
+function modelReady()
+{
+	modelsLoaded++;
+	if (modelsLoaded === 2)
+	{
+		console.log("All models loaded");
+		facemesh.detectStart(video, results => {faceTypes = results;});
+		handpose.detectStart(video, results => {handTypes = results;});
+	}
+}
+
+function setup()
+{
+	canvas = createCanvas(480, 720);
+	// canvas = createCanvas(1000, 1000);
+	pixelDensity(1);
+
+	video = createCapture(VIDEO);
+	video.size(160,120); // resolutions
+
+	// To position the canvas in the Middle of the screen
+	var centerX = (windowWidth - width)/2;
+	var centerY = (windowHeight - height)/2;
+	canvas.position(centerX, centerY);
+
+	// For filter images
+	webcamImg = createImage(160,120);
+	filters = new Array(filterLabel.length).fill(null);
+
+	// Red channel Threshold Slider
+	redChannelThresholdSlider = createSlider(0, 255, 110);
+	redChannelThresholdSlider.position(100, 200);
+
+	// Green channel Threshold Slider
+	greenChannelThresholdSlider = createSlider(0, 255, 110);
+	greenChannelThresholdSlider.position(100, 300);
+
+	// Blue channel Threshold Slider
+	blueChannelThresholdSlider = createSlider(0, 255, 110);
+	blueChannelThresholdSlider.position(100, 400);
+
+	// ColourSpace 1 Threshold Slider (YCbCr)
+	colourSpace1ThresholdSlider = createSlider(0, 255, 110);
+	colourSpace1ThresholdSlider.position(100, 500);
+
+	// ColourSpace 2 Threshold Slider (HSV)
+	colourSpace2ThresholdSlider = createSlider(0, 255, 30);
+	colourSpace2ThresholdSlider.position(100, 600);
+
+	detector = new objectdetect.detector(160, 120, scaleFactor, classifier);
+	console.log("Detector initialized:", detector);
+}
+
+function draw()
+{
+	background(125);
+
+	drawGrid();
+	drawText();
+	
+	if(webcamImgTaken)
+	{
+		captureImage();
+		if(fdStyle === 1)
+		{
+			faceDetectionFilter(video, detector);
+		}
+		else if(fdStyle === 2)
+		{
+			greyscaleFaceDetectionFilter(video, detector);
+		}
+		else if(fdStyle === 3)
+		{
+			blurFaceDetectionFilter(video, detector);
+		}
+		else if(fdStyle === 4)
+		{
+			colourConvertFaceDetectionFilter(video, detector);
+		}
+		else if(fdStyle === 5)
+		{
+			pixelateFaceDetectionFilter(video, detector);
+		}
+	}
+
+	image(video, 320, 0, 160, 120);
+	video.hide();
+	// image(video, 0, 480, 160, 120);
+	faceDetectionFilter(video, detector);
+}
+
+// Function to capture the current frame from the webcam
+function captureImage()
+{
+	filters[0] = webcamImg; // Store original snap shot
+	filters[1] = greyscaleNBrightnessFilter(webcamImg);
+	filters[3] = redChannelFilter(webcamImg);
+	filters[4] = greenChannelFilter(webcamImg);
+	filters[5] = blueChannelFilter(webcamImg);
+	filters[6] = thresholdFilter(filters[3], 'red', redChannelThresholdSlider.value());
+	filters[7] = thresholdFilter(filters[4], 'green', greenChannelThresholdSlider.value());
+	filters[8] = thresholdFilter(filters[5], 'blue', blueChannelThresholdSlider.value());
+	filters[9] = webcamImg;
+	filters[10] = colourSpace1Filter(webcamImg);
+	filters[11] = colourSpace2Filter(webcamImg);
+	filters[12] = video;
+	filters[13] = thresholdFilter(filters[10], 'cs1',  colourSpace1ThresholdSlider.value());
+	filters[14] = thresholdFilter(filters[11], 'cs2', colourSpace2ThresholdSlider.value());
+	filters[15] = extension(webcamImg);
+}
+
+function drawGrid()
+{
+	var cols = 3;
+	var rows = Math.ceil(filters.length / cols);
+	var gridWidth = width / cols;
+	var gridHeight = height / rows;
+
+	for(i = 0; i < filters.length; i++)
+	{
+		var x = (i % cols) * gridWidth;
+		var y = Math.floor(i / cols) * gridHeight;
+
+		gridPos[i] = {x: x, y: y, width: gridWidth, height: gridHeight};
+
+		// Draw grid box
+		stroke(0,255,0);
+		strokeWeight(2);
+		noFill();
+		rect(x, y, gridWidth, gridHeight);
+
+		// Update & Draw filter image dynamically)
+		if (i === 6 && filters[3])
+		{
+            filters[6] = thresholdFilter(filters[3], 'red', redChannelThresholdSlider.value()); 
+        }
+        if (i === 7 && filters[4])
+		{
+            filters[7] = thresholdFilter(filters[4], 'green', greenChannelThresholdSlider.value()); 
+        }
+        if (i === 8 && filters[5])
+		{
+            filters[8] = thresholdFilter(filters[5], 'blue', blueChannelThresholdSlider.value()); 
+        }
+		if (i === 12 && filters[12])
+		{  
+            push();
+            translate(x, y);
+            image(video, 0, 0, gridWidth, gridHeight); // To draw live video in grid
+            pop();
+        }
+        if (i === 13 && filters[10])
+		{
+            filters[13] = thresholdFilter(filters[10], 'cs1', colourSpace1ThresholdSlider.value());
+        }
+        if (i === 14 && filters[11])
+		{
+            filters[14] = thresholdFilter(filters[11], 'cs2', colourSpace2ThresholdSlider.value());
+        }
+        if (i === 15 && filters[15] && gridPos[15])
+		{
+			push();
+            // translate(x, y);
+            image(video, x, y, gridWidth, gridHeight); // To draw live video in grid
+            // image(video, 0, 0, gridWidth, gridHeight); // To draw live video in grid
+            pop();
+        }
+
+		// Draw Filter image, IF available
+		if(filters[i])
+		{
+			image(filters[i], x, y, gridWidth, gridHeight);
+		}
+	
+		// Draw filter Label
+		noStroke();
+		fill(255);
+		textSize(12);
+		textAlign(CENTER);
+		textWrap(WORD);
+		text(filterLabel[i], x + gridWidth - 130, y + gridHeight - 35, 100);
+	}
+}
+
+function keyPressed()
+{
+	if(key === " ")
+	{
+		// To take screen shot of webcam
+		webcamImg = video.get();
+		webcamImgTaken = true;
+	}
+	else if(key === "g" || key === "G")
+	{
+		fdStyle = 2;
+	}
+	else if (key === "b" || key === "B")
+	{
+		fdStyle = 3;
+	}
+	else if (key === "c" || key === "C")
+	{
+		fdStyle = 4;
+	}
+	else if (key === "p" || key === "P")
+	{
+		fdStyle = 5;
+	}
+}
+
+function drawText()
+{
+	fill(0);
+	textAlign(LEFT);
+	textSize(13);
+
+	// Red channel Threshold Slider
+    text(redChannelThresholdSlider.value(), 80, 260);
+
+	// Green channel Threshold Slider
+	text(greenChannelThresholdSlider.value(), 240, 260);
+
+	// Blue channel Threshold Slider
+	text(blueChannelThresholdSlider.value(), 400, 260);
+
+	// ColourSpace 1 Threshold Slider (YCbCr)
+	text(colourSpace1ThresholdSlider.value(), 240, 380);
+
+	// ColourSpace 2 Threshold Slider (HSV)
+	text(colourSpace2ThresholdSlider.value(), 400, 380);
+
+	text("Press SPACE to take snapshot", 170, 620);
+	text("Face Detection:", 170, 640);
+	text("Press 'g' for Greyscale", 270, 640);
+    text("Press 'b' for Blur", 270, 660);
+    text("Press 'c' for Colour Conversion", 270, 680);
+    text("Press 'p' for Pixelation", 270, 700);
+}
+
+/*
+## Commentary
+### Q8: Image thresholding for each RGB channel
+Thresholding each colour channel individually highlights different aspects of an image's structure, as each channel carries distinct intensity variations.
+- The red channel accentuates skin tones, making facial features more prominent, likely due to the similarity between red shades and human skin.
+- The green channel enhances edge details more effectively than the others, possibly due to its higher weight in luminance calculations.
+- The blue channel is the least effective in preserving object clarity, as it tends to have lower luminance and higher noise levels, making features less distinguishable.
+
+### Q11: Image thresholding for the Colour Space
+There were notable differences in the thresholding results after converting the image to alternative colour spaces
+- colour-space conversions generally improved feature separation but also introduced noise.
+- HSV and YCbCr were used. The HSV model, which separates intensity from colour information, provided a clearer thresholded result. The YCbCr model, commonly used in image compression, highlighted differences in chromatic details.
+- Alternative colour spaces such as Lab* could potentially improve results by isolating brightness from colour, making thresholding more reliable.
+
+### Problems faced
+### Implementing threshold for RGB channel
+One of the challenges faced was designing a system that could threshold each channel separately while keeping the code efficient. Initially, I considered creating separate folders for each channel but later optimised the implementation within a single structure.
+
+### Face detection
+The biggest challenge was implementing face detection effectively. Initially, I used the library recommended in the course but encountered persistent errors. As an alternative, I tried the ml5.js library, which provided additional functionalities but introduced new errors. After debugging, I reverted to the original library and resolved previous issues. Later, while working on the extension, I realised that ml5.js offered more possibilities. At this point, I switched back to ml5.js and, after extensive troubleshooting, successfully integrated it.
+
+Another issue was ensuring that both the face detection and the extension filter appeared in their intended grid positions. I was able to solve it after many trial-and-error with the adjustments to coordinate mapping and display logic.
+
+### Target to complete the project
+Despite all the challenges faced, I managed to resolve most of them, ensuring my image processing application runs smoothly. Something that I can improve on is time management,as allocating more structured debugging time would have helped in addressing issues earlier in development.
+
+### Extension 
+For my extension, I implemented a laser-eye filter inspired by social media filters. It uses ml5's faceMesh, to detect the facial landmarks, identify eye positions, and draw animated laser beams extending from the eyes.
+This extension is unique because it dynamically tracks facial movements in real time, making it more interactive than a static filter. Future improvements could involve adding colour variations, beam width adjustments, or interactive elements where laser intensity changes based on facial expressions.
+### 
+*/
+ -------------------- threshold.js ------------------------ 
+
+function thresholdFilter(img, channel, threshold)
+{
+    // To create a NEW_filtered_image
+    var imgOut = createImage(img.width, img.height);
+
+    // To load the pixels of NEW_filtered_image 
+    imgOut.loadPixels();
+
+    // To load the pixels of Existing_image
+    img.loadPixels();
+
+    for (x = 0; x < imgOut.width; x++)
+    {
+        for (y = 0; y < imgOut.height; y++)
+        {
+            var index = (x + y * imgOut.width) * 4;
+
+            var r = img.pixels[index + 0];
+            var g = img.pixels[index + 1];
+            var b = img.pixels[index + 2];
+
+            var value = 0;
+            if(channel === 'red') value = r;
+            if(channel === 'green') value = g;
+            if(channel === 'blue') value = b;
+            if(channel === 'cs1') value = g; // Cb's component
+            if(channel === 'cs2') value = r; // Hue's component
+
+            if(channel === 'red' && r > threshold)
+            {
+                imgOut.pixels[index + 0] = 255;
+                imgOut.pixels[index + 1] = 0;
+                imgOut.pixels[index + 2] = 0;
+                imgOut.pixels[index + 3] = 255;
+            } 
+            else if(channel === 'green' && g > threshold)
+            {
+                imgOut.pixels[index + 0] = 0;
+                imgOut.pixels[index + 1] = 255;
+                imgOut.pixels[index + 2] = 0;
+                imgOut.pixels[index + 3] = 255;
+            } 
+            else if(channel === 'blue' && b > threshold)
+            {
+                imgOut.pixels[index + 0] = 0;
+                imgOut.pixels[index + 1] = 0;
+                imgOut.pixels[index + 2] = 255;
+                imgOut.pixels[index + 3] = 255;
+            }
+            else if(channel === 'cs1' && value > threshold)
+            {
+                Y = r * 0.299 + g * 0.587 + b * 0.114;
+                Cb = (r * -0.169 - g * 0.331 + b * 0.5) + 128;
+                Cr = (r * 0.5 - g * 0.41 - b * 0.081) + 128;
+
+                var scaledCb;
+                var scaledCr;
+                if(Cr <= threshold)
+                {
+                    scaledCd = map(Cb, 0, threshold, 0, 100);
+                    scaledCr = map(Cr, 0, threshold, 0, 100);
+                }
+                else
+                {
+                    scaledCd = map(Cb, threshold, 255, 100, 200);
+                    scaledCr = map(Cr, threshold, 255, 100, 200);
+                }
+
+                imgOut.pixels[index + 0] = Y;
+                imgOut.pixels[index + 1] = scaledCb * 2;
+                imgOut.pixels[index + 2] = scaledCr * 2;
+                imgOut.pixels[index + 3] = 255;
+            }
+            else if(channel === 'cs2' && value > threshold)
+            {
+                var rgbColor = color(r, g, b);
+                var brightnessValue = brightness(rgbColor); // To Extract brightness
+
+                // Apply threshold based on the Brightness value
+                var scaledBrightness;
+                if(scaledBrightness <= threshold)
+                {
+                    // Scale Brightness based on the threshold
+                    scaledBrightness = map(brightnessValue, 0, threshold, 0, 100);
+                }
+                else
+                {
+                    // Apply color, as threshold INCreases
+                    scaledBrightness = map(brightnessValue, threshold, 100, 100, 200);
+                }
+
+                imgOut.pixels[index + 0] = r * 1.5; // the Hue
+                imgOut.pixels[index + 1] = g * 1.5; // the Saturation
+                imgOut.pixels[index + 2] = scaledBrightness * 2; // the brightness Value
+                imgOut.pixels[index + 3] = 255;
+            }
+            else
+            {
+                imgOut.pixels[index + 0] = 0;
+                imgOut.pixels[index + 1] = 0;
+                imgOut.pixels[index + 2] = 0;
+                imgOut.pixels[index + 3] = 255;
+            }
+        }
+    }
+    imgOut.updatePixels();
+    return imgOut;
+}
